@@ -1,4 +1,5 @@
 const Lottery    = artifacts.require("Lottery");
+const RandomNumberConsumer = artifacts.require("RandomNumberConsumer");
 const Governance = artifacts.require("Governance");
 
 const LinkToken  = artifacts.require("LinkToken_v0.6/LinkToken");
@@ -14,8 +15,8 @@ module.exports = async function (deployer, network, accounts) {
   // const linkAddress = (network_config.linkAddress !== undefined) ? network_config.linkAddress : '0x0';
 
   // use provided LINK address if defined for network
-  if (network_config.linkAddress !== undefined) {
-    linkAddress = network_config.linkAddress
+  if (network_config.LINK !== undefined) {
+    linkAddress = network_config.LINK
   }
   else if (network.startsWith('main') || network.startsWith('live')) {
     linkAddress = "0x0";  // will cause the contract to retrieve live address
@@ -30,5 +31,21 @@ module.exports = async function (deployer, network, accounts) {
 
   var governanceContract = await Governance.deployed();
 
-  await deployer.deploy(Lottery, governanceContract.address, linkAddress);
+  await deployer.deploy(Lottery,
+    governanceContract.address,
+    linkAddress,
+    network_config.ALARM_ORACLE,
+    network_config.ALARM_JOB_ID,
+    network_config.ALARM_FEE,
+  );
+
+
+  await deployer.deploy(RandomNumberConsumer,
+    governanceContract.address,
+    network_config.VRF_KEYHASH,
+    network_config.VRF_FEE,
+    network_config.VRF_COORDINATOR,
+    linkAddress,
+  );
+
 };

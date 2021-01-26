@@ -6,30 +6,38 @@ import {randomness_interface} from "./interfaces/randomness_interface.sol";
 import {governance_interface} from "./interfaces/governance_interface.sol";
 
 contract Lottery is ChainlinkClient {
+
     enum LOTTERY_STATE { OPEN, CLOSED, CALCULATING_WINNER }
     LOTTERY_STATE public lottery_state;
     uint256 public lotteryId;
     address payable[] public players;
     governance_interface public governance;
-    // .01 ETH
-    uint256 public MINIMUM = 1000000000000000;
-    // 0.1 LINK
-    uint256 public ORACLE_PAYMENT = 100000000000000000;
-    // Alarm stuff
-    address CHAINLINK_ALARM_ORACLE = 0xc99B3D447826532722E41bc36e644ba3479E4365;
-    bytes32 CHAINLINK_ALARM_JOB_ID = "2ebb1c1a4b1e4229adac24ee0b5f784f";
 
-    constructor(address _governance, address _link) public
+    // .01 ETH
+    uint256 public MINIMUM          = 1000000000000000;
+
+    // Alarm stuff
+    address alarmOracleAddress; // CHAINLINK_ALARM_ORACLE = 0xc99B3D447826532722E41bc36e644ba3479E4365;
+    bytes32 alarmJobID;         // CHAINLINK_ALARM_JOB_ID = "2ebb1c1a4b1e4229adac24ee0b5f784f";
+    uint256 public alarmFee;    // ORACLE_PAYMENT = 100000000000000000;  // 0.1 LINK
+
+    constructor(address _governance, address _link, address _alarmOracleAddress, bytes32 _alarmJobID, uint256 _alarmFee) public
     {
+        governance = governance_interface(_governance);
+
         if (_link == address(0)) {
             setPublicChainlinkToken();
         }
         else {
             setChainlinkToken(_link);
         }
+
+        alarmOracleAddress = _alarmOracleAddress;
+        alarmJobID = _alarmJobID;
+        alarmFee   = _alarmFee;
+
         lotteryId = 1;
         lottery_state = LOTTERY_STATE.CLOSED;
-        governance = governance_interface(_governance);
     }
 
     function enter() public payable {
@@ -38,18 +46,19 @@ contract Lottery is ChainlinkClient {
         players.push(msg.sender);
     }
 
-  function start_new_lottery(uint256 duration) public {
-    require(lottery_state == LOTTERY_STATE.CLOSED, "can't start a new lottery yet");
-    lottery_state = LOTTERY_STATE.OPEN;
-    Chainlink.Request memory req = buildChainlinkRequest(CHAINLINK_ALARM_JOB_ID, address(this), this.fulfill_alarm.selector);
-    req.addUint("until", now + duration);
-    sendChainlinkRequestTo(CHAINLINK_ALARM_ORACLE, req, ORACLE_PAYMENT);
-  }
+    function start_new_lottery(uint256 duration) public {
+        require(lottery_state == LOTTERY_STATE.CLOSED, "can't start a new lottery yet");
+        lottery_state = LOTTERY_STATE.OPEN;
+        Chainlink.Request memory req = buildChainlinkRequest(alarmJobID, address(this), this.fulfill_alarm.selector);
+        // req.addUint("until", now + duration);    // Solidity >= 0.7.0 depricated
+        req.addUint("until", block.timestamp + duration);
+        sendChainlinkRequestTo(alarmOracleAddress, req, alarmFee);
+    }
 
-  function fulfill_alarm(bytes32 _requestId)
-    public
-    recordChainlinkFulfillment(_requestId)
-      {
+    function fulfill_alarm(bytes32 _requestId)
+        public
+        recordChainlinkFulfillment(_requestId)
+        {
         require(lottery_state == LOTTERY_STATE.OPEN, "The lottery hasn't even started!");
         // add a require here so that only the oracle contract can
         // call the fulfill alarm method
